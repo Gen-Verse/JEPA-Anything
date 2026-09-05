@@ -1,0 +1,72 @@
+"""Structured experiment/claim evidence contracts rendered from the design."""
+
+from __future__ import annotations
+
+from typing import Any, Mapping
+
+EXPERIMENTS = {{EXPERIMENTS_REPR}}
+CLAIMS = {{CLAIMS_REPR}}
+REQUIRED_BASELINE_KINDS = ("standard_jepa", "unconstrained_multihead")
+
+
+def assert_planned_claim_coverage() -> None:
+    """Recheck reciprocal, exact coverage without treating plans as results."""
+
+    experiments = {item["id"]: item for item in EXPERIMENTS}
+    for claim in CLAIMS:
+        if claim["status"] != "planned":
+            raise ValueError("Generated claims must remain planned, not supported.")
+        for experiment_id in claim["experiment_ids"]:
+            experiment = experiments[experiment_id]
+            metrics = {item["id"]: item["direction"] for item in experiment["metrics"]}
+            if claim["id"] not in experiment["tests_claims"]:
+                raise ValueError("Experiment does not reciprocally list the planned claim.")
+            if metrics.get(claim["metric_id"]) != claim["direction"]:
+                raise ValueError("Experiment metric or direction does not match the claim.")
+            if experiment["split"] != claim["split"]:
+                raise ValueError("Experiment split does not match the claim.")
+            if experiment["horizons"] != claim["horizons"]:
+                raise ValueError("Experiment horizons do not match the claim.")
+            if experiment["usage_mode"] != claim["usage_mode"]:
+                raise ValueError("Experiment use mode does not match the claim.")
+            if set(claim["baseline_ids"]) != set(experiment["baselines"]):
+                raise ValueError("Experiment baselines do not match the claim.")
+            if set(claim["audit_ids"]) != set(experiment["audits"]):
+                raise ValueError("Experiment audits do not match the claim.")
+
+
+def audit_claim_evidence_envelope(
+    claim_id: str,
+    experiment_id: str,
+    evidence: Mapping[str, Any],
+) -> None:
+    """Check result metadata against a planned claim before any conclusion.
+
+    This stub intentionally does not decide statistical support. It rejects a
+    result measured with a different metric, direction, split, horizon, model,
+    use mode, baseline set, or audit set.
+    """
+
+    claims = {item["id"]: item for item in CLAIMS}
+    experiments = {item["id"]: item for item in EXPERIMENTS}
+    claim = claims[claim_id]
+    experiment = experiments[experiment_id]
+    if experiment_id not in claim["experiment_ids"]:
+        raise ValueError("Experiment is not contracted to this claim.")
+    exact_fields = {
+        "model_id": claim["model_id"],
+        "metric_id": claim["metric_id"],
+        "direction": claim["direction"],
+        "split": claim["split"],
+        "horizons": claim["horizons"],
+        "usage_mode": claim["usage_mode"],
+    }
+    for field, expected in exact_fields.items():
+        if evidence.get(field) != expected:
+            raise ValueError(f"Evidence {field!r} does not match the planned claim.")
+    if set(evidence.get("baseline_ids", ())) != set(claim["baseline_ids"]):
+        raise ValueError("Evidence baseline IDs do not match the planned claim.")
+    if set(evidence.get("passed_audit_ids", ())) != set(claim["audit_ids"]):
+        raise ValueError("Evidence audit IDs do not match the planned claim.")
+    if evidence.get("experiment_id") != experiment["id"]:
+        raise ValueError("Evidence names the wrong experiment.")

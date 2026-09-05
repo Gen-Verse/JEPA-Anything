@@ -1,0 +1,107 @@
+"""Framework-neutral OPF analysis/synthesis and model interfaces.
+
+This module defines observable obligations, not a model implementation or a
+training loop. Complete state synthesis is distinct from concatenating factor
+coordinates: it must apply the Moore-Penrose pseudoinverse of the stacked
+projector-transpose analysis map after a measured full-rank audit.
+"""
+
+from __future__ import annotations
+
+import math
+from typing import Any, Mapping, Protocol, Sequence, runtime_checkable
+
+from .contracts import AUDITS, COORDINATES, STATE_D, STATE_K, STATE_R
+from .contracts import STATE_ANALYSIS
+
+
+ORTHOGONALITY_MODE = STATE_ANALYSIS.get("orthogonality_mode", "soft_gram")
+
+
+@runtime_checkable
+class OPFStateModel(Protocol):
+    """Minimum inspectable interface expected from a concrete model."""
+
+    def encode_context(self, context_tokens: Any) -> Any:
+        """Return an online context embedding with final dimension ``STATE_D``."""
+
+    def encode_target(self, target_tokens: Any) -> Any:
+        """Return a stop-gradient target embedding with final dimension ``STATE_D``."""
+
+    def analysis_projectors(self) -> Sequence[Any]:
+        """Return ``STATE_K`` learned projectors, each shaped ``[STATE_D, STATE_R]``."""
+
+    def analyze_target(self, target_embedding: Any) -> Sequence[Any]:
+        """Return canonical factor blocks ``P_k.T @ target``, each width ``STATE_R``."""
+
+    def predict_factors(
+        self,
+        context_embedding: Any,
+        target_descriptor: Any,
+        exogenous_inputs: Any,
+    ) -> Sequence[Any]:
+        """Return predicted factor blocks in ``COORDINATES`` order."""
+
+    def synthesize_complete_state(self, factor_blocks: Sequence[Any]) -> Any:
+        """Apply ``pinv(stack(P_k.T))`` to concatenated factor coordinates."""
+
+
+def assert_factor_block_contract(factor_blocks: Sequence[Any]) -> None:
+    """Check canonical block count; concrete backends must also check each width."""
+
+    if len(factor_blocks) != STATE_K:
+        raise ValueError(f"Expected {STATE_K} factor blocks in {COORDINATES!r} order.")
+
+
+def qr_retraction_due(step: int) -> bool:
+    """Return whether the configured post-optimizer QR hook must run."""
+
+    if isinstance(step, bool) or not isinstance(step, int) or step <= 0:
+        raise ValueError("step must be a positive integer")
+    if ORTHOGONALITY_MODE != "qr_retraction":
+        return False
+    frequency = STATE_ANALYSIS["qr_retraction"]["frequency"]
+    return step % frequency == 0
+
+
+def audit_geometry_measurements(measurements: Mapping[str, Any]) -> None:
+    """Validate measured rank/conditioning/synthesis evidence from a backend.
+
+    Required measurements are deliberately numeric and framework-neutral. A
+    passing call verifies an audit result envelope; it does not compute the
+    projectors, train a model, or establish a scientific claim.
+    """
+
+    geometry = AUDITS["geometry"]
+    expected_shapes = tuple((STATE_D, STATE_R) for _ in range(STATE_K))
+    if tuple(tuple(shape) for shape in measurements.get("projector_shapes", ())) != expected_shapes:
+        raise ValueError("Measured projector shapes do not match the design.")
+    if measurements.get("analysis_map_shape") != [STATE_D, STATE_D]:
+        raise ValueError("Stacked projector-transpose analysis map must be d-by-d.")
+    analysis_rank = measurements.get("analysis_rank")
+    if (
+        not isinstance(analysis_rank, int)
+        or isinstance(analysis_rank, bool)
+        or (geometry["full_rank_required"] and analysis_rank != STATE_D)
+    ):
+        raise ValueError("Analysis map is not full rank; complete-state synthesis is invalid.")
+    condition_number = measurements.get("condition_number")
+    if (
+        not isinstance(condition_number, (int, float))
+        or isinstance(condition_number, bool)
+        or not math.isfinite(condition_number)
+        or condition_number <= 0
+    ):
+        raise ValueError("A positive measured condition number is required.")
+    if condition_number > geometry["max_condition_number"]:
+        raise ValueError("Analysis map exceeds the declared condition-number ceiling.")
+    synthesis_nmse = measurements.get("synthesis_nmse")
+    if (
+        not isinstance(synthesis_nmse, (int, float))
+        or isinstance(synthesis_nmse, bool)
+        or not math.isfinite(synthesis_nmse)
+        or synthesis_nmse < 0
+    ):
+        raise ValueError("A non-negative measured synthesis NMSE is required.")
+    if synthesis_nmse > geometry["max_synthesis_nmse"]:
+        raise ValueError("Pseudoinverse synthesis exceeds the declared NMSE ceiling.")

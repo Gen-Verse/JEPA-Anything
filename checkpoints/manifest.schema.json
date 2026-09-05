@@ -1,0 +1,318 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://jepa-anything.example/schemas/checkpoint-manifest-v1.json",
+  "title": "JEPA Anything metadata-only checkpoint manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "manifest_id",
+    "updated_utc",
+    "publication_policy",
+    "hash_policy",
+    "provenance",
+    "checkpoints"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "jepa-anything.checkpoint-manifest/v1"
+    },
+    "manifest_id": {
+      "$ref": "#/$defs/identifier"
+    },
+    "updated_utc": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "publication_policy": {
+      "const": "metadata_only_in_git"
+    },
+    "hash_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "algorithm",
+        "encoding",
+        "scope"
+      ],
+      "properties": {
+        "algorithm": {
+          "const": "sha256"
+        },
+        "encoding": {
+          "const": "lowercase_hex"
+        },
+        "scope": {
+          "const": "exact_file_bytes"
+        }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "created_by",
+        "repository_commit",
+        "manifest_schema"
+      ],
+      "properties": {
+        "created_by": {
+          "type": "string",
+          "minLength": 1
+        },
+        "repository_commit": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "manifest_schema": {
+          "$ref": "#/$defs/source_file"
+        }
+      }
+    },
+    "checkpoints": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/checkpoint"
+      }
+    }
+  },
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]*$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "source_file": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "sha256"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "artifact_file": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "media_type",
+        "bytes",
+        "sha256"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "media_type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "checkpoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "recipe_id",
+        "availability",
+        "immutable_uri",
+        "files",
+        "sources",
+        "training",
+        "claims"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "recipe_id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "availability": {
+          "enum": [
+            "not_published",
+            "published"
+          ]
+        },
+        "immutable_uri": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "files": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/artifact_file"
+          }
+        },
+        "sources": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "recipe",
+            "compiled_design"
+          ],
+          "properties": {
+            "recipe": {
+              "$ref": "#/$defs/source_file"
+            },
+            "compiled_design": {
+              "$ref": "#/$defs/source_file"
+            }
+          }
+        },
+        "training": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "executed",
+            "steps",
+            "framework",
+            "data_provenance"
+          ],
+          "properties": {
+            "executed": {
+              "type": "boolean"
+            },
+            "steps": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "framework": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "data_provenance": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "claims": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "scientific_results_claimed",
+            "result_claims",
+            "evidence_boundary"
+          ],
+          "properties": {
+            "scientific_results_claimed": {
+              "type": "boolean"
+            },
+            "result_claims": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "evidence_boundary": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "availability": {
+                "const": "not_published"
+              }
+            },
+            "required": [
+              "availability"
+            ]
+          },
+          "then": {
+            "properties": {
+              "immutable_uri": {
+                "type": "null"
+              },
+              "files": {
+                "maxItems": 0
+              },
+              "training": {
+                "properties": {
+                  "executed": {
+                    "const": false
+                  },
+                  "steps": {
+                    "const": 0
+                  },
+                  "framework": {
+                    "type": "null"
+                  }
+                }
+              },
+              "claims": {
+                "properties": {
+                  "scientific_results_claimed": {
+                    "const": false
+                  },
+                  "result_claims": {
+                    "maxItems": 0
+                  }
+                }
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "immutable_uri": {
+                "type": "string",
+                "format": "uri",
+                "minLength": 1
+              },
+              "files": {
+                "minItems": 1
+              },
+              "training": {
+                "properties": {
+                  "executed": {
+                    "const": true
+                  },
+                  "steps": {
+                    "minimum": 1
+                  },
+                  "framework": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

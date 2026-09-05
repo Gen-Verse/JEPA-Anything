@@ -1,0 +1,106 @@
+"""Machine-readable constants rendered from the validated design."""
+
+TASK_ID = {{TASK_ID_REPR}}
+SYSTEM_ID = {{SYSTEM_ID_REPR}}
+MODEL_ID = {{MODEL_ID_REPR}}
+IDENTITY_KEYS = {{IDENTITY_KEYS_REPR}}
+
+CONTEXT_INPUT_FIELDS = {{CONTEXT_INPUT_FIELDS_REPR}}
+TARGET_INPUT_FIELDS = {{TARGET_INPUT_FIELDS_REPR}}
+CONTEXT_SOURCES = {{CONTEXT_SOURCES_REPR}}
+TARGET_FIELDS = {{TARGET_FIELDS_REPR}}
+TARGET_DESCRIPTORS = {{TARGET_DESCRIPTORS_REPR}}
+EXOGENOUS_INPUTS = {{EXOGENOUS_INPUTS_REPR}}
+
+STATE_D = {{STATE_D}}
+STATE_K = {{STATE_K}}
+STATE_R = {{STATE_R}}
+COORDINATES = {{COORDINATES_REPR}}
+STATE_ANALYSIS = {{STATE_ANALYSIS_REPR}}
+STATE_SYNTHESIS = {{STATE_SYNTHESIS_REPR}}
+LOSSES = {{LOSSES_REPR}}
+
+USAGE_MODE = {{USAGE_MODE_REPR}}
+REFERENCE_CAPACITY = {{CAPACITY_REPR}}
+BASELINES = {{BASELINES_REPR}}
+BASELINE_IDS = {{BASELINE_IDS_REPR}}
+BASELINE_KINDS = {{BASELINE_KINDS_REPR}}
+AUDITS = {{AUDITS_REPR}}
+
+
+def assert_contract() -> None:
+    """Check static shape, lineage, synthesis, loss, and capacity invariants."""
+
+    if STATE_K * STATE_R != STATE_D:
+        raise ValueError("Complete OPF state requires K * r == d.")
+    if not IDENTITY_KEYS or len(IDENTITY_KEYS) != len(set(IDENTITY_KEYS)):
+        raise ValueError("Identity keys must be non-empty and unique.")
+    if COORDINATES != tuple(f"pc_{index:03d}" for index in range(STATE_K)):
+        raise ValueError("Factor IDs are not in canonical coordinate order.")
+    if len(set(COORDINATES)) != STATE_K:
+        raise ValueError("Factor coordinate IDs must be unique.")
+    if tuple(TARGET_INPUT_FIELDS) != tuple(TARGET_FIELDS):
+        raise ValueError("Target adapter fields must exactly match target fields.")
+    context_source_fields = {
+        field
+        for source in CONTEXT_SOURCES
+        for field in source["fields"]
+    }
+    if not set(CONTEXT_INPUT_FIELDS) <= context_source_fields:
+        raise ValueError("A context adapter field lacks declared source lineage.")
+
+    expected_analysis = {
+        "kind": "learned_projectors",
+        "projector_count": STATE_K,
+        "projector_shape": [STATE_D, STATE_R],
+        "target_stop_gradient": True,
+    }
+    if any(STATE_ANALYSIS.get(key) != value for key, value in expected_analysis.items()):
+        raise ValueError("Learned-projector analysis contract is invalid.")
+    orthogonality_mode = STATE_ANALYSIS.get("orthogonality_mode", "soft_gram")
+    if orthogonality_mode not in {"soft_gram", "qr_init", "qr_retraction"}:
+        raise ValueError("Orthogonality strategy is invalid.")
+    qr_retraction = STATE_ANALYSIS.get("qr_retraction")
+    if orthogonality_mode == "qr_retraction":
+        if not isinstance(qr_retraction, dict):
+            raise ValueError("QR-retraction settings are missing.")
+        if qr_retraction.get("timing") != "after_optimizer_step":
+            raise ValueError("QR retraction must run after optimizer steps.")
+        frequency = qr_retraction.get("frequency")
+        if isinstance(frequency, bool) or not isinstance(frequency, int) or frequency <= 0:
+            raise ValueError("QR-retraction frequency must be a positive integer.")
+        if qr_retraction.get("sign_canonicalization") != "positive_r_diagonal":
+            raise ValueError("QR sign canonicalization is invalid.")
+        if qr_retraction.get("training_compute_accounting") != "report_separately":
+            raise ValueError("QR training compute must be reported separately.")
+    elif qr_retraction is not None:
+        raise ValueError("QR-retraction settings require qr_retraction mode.")
+    expected_synthesis = {
+        "kind": "moore_penrose_pseudoinverse",
+        "analysis_map": "projector_transpose",
+        "require_full_rank": True,
+    }
+    if STATE_SYNTHESIS != expected_synthesis:
+        raise ValueError("Complete-state synthesis contract is invalid.")
+    if LOSSES["factor_prediction"]["kind"] != "factor_mse":
+        raise ValueError("Factor-prediction loss contract is invalid.")
+    if LOSSES["projector_orthogonality"]["kind"] != "projector_gram":
+        raise ValueError("Projector-orthogonality loss contract is invalid.")
+    if set(LOSSES["projector_orthogonality"]["components"]) != {
+        "within_projector",
+        "cross_projector",
+    }:
+        raise ValueError("Projector-Gram loss is missing a required component.")
+    if LOSSES["factor_activity"]["kind"] != "coordinate_std_floor":
+        raise ValueError("Factor-activity loss contract is invalid.")
+    if LOSSES["online_encoder_activity"]["kind"] != "coordinate_std_floor":
+        raise ValueError("Online-encoder activity loss contract is invalid.")
+
+    if REFERENCE_CAPACITY["parameter_scope"] != "full_trainable_model":
+        raise ValueError("Reference parameter-counting scope is invalid.")
+    if REFERENCE_CAPACITY["flops_scope"] != "predictor_forward_per_target":
+        raise ValueError("Reference FLOPs-counting scope is invalid.")
+    if not set(("standard_jepa", "unconstrained_multihead")) <= set(BASELINE_KINDS):
+        raise ValueError("Both required baseline families must be present.")
+    if MODEL_ID in BASELINE_IDS or len(BASELINE_IDS) != len(set(BASELINE_IDS)):
+        raise ValueError("Reference and baseline model IDs must be distinct.")

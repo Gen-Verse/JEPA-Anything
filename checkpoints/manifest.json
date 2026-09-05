@@ -1,0 +1,49 @@
+{
+  "schema_version": "jepa-anything.checkpoint-manifest/v1",
+  "manifest_id": "jepa-anything-checkpoints-v1",
+  "updated_utc": "2026-08-24T15:00:58Z",
+  "publication_policy": "metadata_only_in_git",
+  "hash_policy": {
+    "algorithm": "sha256",
+    "encoding": "lowercase_hex",
+    "scope": "exact_file_bytes"
+  },
+  "provenance": {
+    "created_by": "jepa-anything repository maintainers",
+    "repository_commit": null,
+    "manifest_schema": {
+      "path": "checkpoints/manifest.schema.json",
+      "sha256": "1014a78515fae9f23cacd24184ae2d31beda4c186b1a330255ce41c9b27c7154"
+    }
+  },
+  "checkpoints": [
+    {
+      "id": "synthetic-linear-dynamics-opf-planned",
+      "recipe_id": "synthetic-linear-dynamics-v1",
+      "availability": "not_published",
+      "immutable_uri": null,
+      "files": [],
+      "sources": {
+        "recipe": {
+          "path": "recipes/synthetic-linear-dynamics/recipe.json",
+          "sha256": "af7208e49c9ad9eda3549d730487cdf9402dae7fdef7f2cbca5cb46ae0dd8d1e"
+        },
+        "compiled_design": {
+          "path": "recipes/synthetic-linear-dynamics/design.expected.json",
+          "sha256": "9483b94e2b8910416e4f0fa1a3eb24e8d13e9f879b181e076e9e5b2af4ed52ac"
+        }
+      },
+      "training": {
+        "executed": false,
+        "steps": 0,
+        "framework": null,
+        "data_provenance": "Seeded in-memory synthetic generator declared by recipe; no dataset or trained state persisted."
+      },
+      "claims": {
+        "scientific_results_claimed": false,
+        "result_claims": [],
+        "evidence_boundary": "This entry pins a planned interface only. It is not a model checkpoint and supports no performance, semantic-factor, causal, or generalization conclusion."
+      }
+    }
+  ]
+}

@@ -1,0 +1,461 @@
+{
+  "schema_version": "2.0",
+  "task": {
+    "id": "synthetic-controlled-dynamics",
+    "system_id": "synthetic-system-v1",
+    "identity_keys": [
+      "trajectory_id"
+    ],
+    "summary": "Predict future observations from an eight-step context and known planned actions.",
+    "provenance": {
+      "dataset": "deterministic-synthetic-rollouts",
+      "source": "local-generator",
+      "version": "1"
+    },
+    "metadata": {
+      "recipe": "smoke"
+    }
+  },
+  "observation": {
+    "adapter": {
+      "kind": "vector_sequence",
+      "context_input_fields": [
+        "observation"
+      ],
+      "target_input_fields": [
+        "observation"
+      ],
+      "tokenization": "one_timestep_per_token",
+      "output_dim": 8
+    },
+    "context": {
+      "system_id": "synthetic-system-v1",
+      "identity_keys": [
+        "trajectory_id"
+      ],
+      "window": {
+        "start": -7,
+        "end": 0
+      },
+      "sources": [
+        {
+          "id": "trajectory",
+          "fields": [
+            "observation"
+          ],
+          "available_through": 0
+        }
+      ],
+      "target_derived_fields": []
+    },
+    "target": {
+      "system_id": "synthetic-system-v1",
+      "identity_keys": [
+        "trajectory_id"
+      ],
+      "window": {
+        "start": 1,
+        "end": 4
+      },
+      "fields": [
+        "observation"
+      ],
+      "source_ids": [
+        "trajectory"
+      ]
+    },
+    "target_descriptor": {
+      "fields": [
+        {
+          "name": "horizon",
+          "availability": "known_at_prediction_time",
+          "role": "index_only",
+          "lineage": {
+            "source_id": "prediction-request",
+            "source_type": "prediction_request",
+            "available_through": 0
+          }
+        }
+      ]
+    },
+    "exogenous_inputs": {
+      "fields": [
+        {
+          "name": "planned_action",
+          "availability": "known_at_prediction_time",
+          "lineage": {
+            "source_id": "action-plan",
+            "source_type": "external_plan",
+            "available_through": 0
+          }
+        }
+      ]
+    }
+  },
+  "model": {
+    "id": "opf",
+    "encoder": {
+      "kind": "mlp",
+      "output_dim": 8,
+      "shared_context_target": true
+    },
+    "predictor": {
+      "kind": "opf",
+      "output_dim": 8
+    },
+    "state": {
+      "d": 8,
+      "K": 4,
+      "r": 2,
+      "coordinate_layout": "concatenate",
+      "analysis": {
+        "kind": "learned_projectors",
+        "projector_count": 4,
+        "projector_shape": [
+          8,
+          2
+        ],
+        "target_stop_gradient": true
+      },
+      "synthesis": {
+        "kind": "moore_penrose_pseudoinverse",
+        "analysis_map": "projector_transpose",
+        "require_full_rank": true
+      },
+      "factors": [
+        {
+          "id": "pc_000",
+          "index": 0,
+          "dim": 2
+        },
+        {
+          "id": "pc_001",
+          "index": 1,
+          "dim": 2
+        },
+        {
+          "id": "pc_002",
+          "index": 2,
+          "dim": 2
+        },
+        {
+          "id": "pc_003",
+          "index": 3,
+          "dim": 2
+        }
+      ]
+    },
+    "capacity": {
+      "full_model_trainable_parameters": 12000,
+      "predictor_flops": 24000,
+      "training_steps": 1000,
+      "parameter_tolerance": 0.003,
+      "predictor_flops_tolerance": 0.02,
+      "parameter_scope": "full_trainable_model",
+      "flops_scope": "predictor_forward_per_target"
+    }
+  },
+  "losses": {
+    "factor_prediction": {
+      "enabled": true,
+      "kind": "factor_mse",
+      "weight": 1.0
+    },
+    "projector_orthogonality": {
+      "enabled": true,
+      "kind": "projector_gram",
+      "weight": 0.1,
+      "components": [
+        "within_projector",
+        "cross_projector"
+      ],
+      "projectors": [
+        "pc_000",
+        "pc_001",
+        "pc_002",
+        "pc_003"
+      ]
+    },
+    "factor_activity": {
+      "enabled": true,
+      "kind": "coordinate_std_floor",
+      "scope": "projected_target_factors",
+      "weight": 0.1,
+      "min_std": 0.1,
+      "epsilon": 0.0001,
+      "coordinates": [
+        {
+          "factor_id": "pc_000",
+          "coordinate_index": 0
+        },
+        {
+          "factor_id": "pc_000",
+          "coordinate_index": 1
+        },
+        {
+          "factor_id": "pc_001",
+          "coordinate_index": 0
+        },
+        {
+          "factor_id": "pc_001",
+          "coordinate_index": 1
+        },
+        {
+          "factor_id": "pc_002",
+          "coordinate_index": 0
+        },
+        {
+          "factor_id": "pc_002",
+          "coordinate_index": 1
+        },
+        {
+          "factor_id": "pc_003",
+          "coordinate_index": 0
+        },
+        {
+          "factor_id": "pc_003",
+          "coordinate_index": 1
+        }
+      ]
+    },
+    "online_encoder_activity": {
+      "enabled": true,
+      "kind": "coordinate_std_floor",
+      "scope": "online_context_encoder",
+      "weight": 0.1,
+      "min_std": 0.1,
+      "epsilon": 0.0001,
+      "dimensions": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ]
+    }
+  },
+  "usage": {
+    "mode": "repeated_transition",
+    "transition": {
+      "rollout_horizons": [
+        1,
+        4
+      ],
+      "condition_on_exogenous": true
+    }
+  },
+  "baselines": [
+    {
+      "id": "standard_jepa",
+      "kind": "standard_jepa",
+      "predictor": {
+        "output_dim": 8
+      },
+      "capacity_match": {
+        "reference_model_id": "opf",
+        "full_model_trainable_parameters": 12000,
+        "predictor_flops": 24000,
+        "training_steps": 1000,
+        "parameter_tolerance": 0.003,
+        "predictor_flops_tolerance": 0.02,
+        "parameter_scope": "full_trainable_model",
+        "flops_scope": "predictor_forward_per_target",
+        "encoder_policy": "same_family_and_width",
+        "data_policy": "same_samples_and_augmentations"
+      }
+    },
+    {
+      "id": "unconstrained_multihead",
+      "kind": "unconstrained_multihead",
+      "heads": 4,
+      "head_dim": 2,
+      "constraints": [],
+      "predictor": {
+        "output_dim": 8
+      },
+      "capacity_match": {
+        "reference_model_id": "opf",
+        "full_model_trainable_parameters": 12000,
+        "predictor_flops": 24000,
+        "training_steps": 1000,
+        "parameter_tolerance": 0.003,
+        "predictor_flops_tolerance": 0.02,
+        "parameter_scope": "full_trainable_model",
+        "flops_scope": "predictor_forward_per_target",
+        "encoder_policy": "same_family_and_width",
+        "data_policy": "same_samples_and_augmentations"
+      }
+    }
+  ],
+  "audits": {
+    "geometry": {
+      "enabled": true,
+      "checks": [
+        "state_shape",
+        "coordinate_concatenation",
+        "within_projector_orthonormality",
+        "cross_projector_orthogonality",
+        "analysis_full_rank",
+        "analysis_condition_number",
+        "pseudoinverse_state_synthesis"
+      ],
+      "full_rank_required": true,
+      "max_condition_number": 100.0,
+      "max_synthesis_nmse": 0.000001
+    },
+    "factor_activity": {
+      "enabled": true,
+      "metric": "coordinate_std",
+      "minimum": 0.1,
+      "coordinates": [
+        {
+          "factor_id": "pc_000",
+          "coordinate_index": 0
+        },
+        {
+          "factor_id": "pc_000",
+          "coordinate_index": 1
+        },
+        {
+          "factor_id": "pc_001",
+          "coordinate_index": 0
+        },
+        {
+          "factor_id": "pc_001",
+          "coordinate_index": 1
+        },
+        {
+          "factor_id": "pc_002",
+          "coordinate_index": 0
+        },
+        {
+          "factor_id": "pc_002",
+          "coordinate_index": 1
+        },
+        {
+          "factor_id": "pc_003",
+          "coordinate_index": 0
+        },
+        {
+          "factor_id": "pc_003",
+          "coordinate_index": 1
+        }
+      ]
+    },
+    "online_encoder_activity": {
+      "enabled": true,
+      "metric": "coordinate_std",
+      "minimum": 0.1,
+      "dimensions": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ]
+    },
+    "target_leakage": {
+      "enabled": true,
+      "checks": [
+        "system_identity",
+        "temporal_separation",
+        "feature_lineage",
+        "descriptor_availability",
+        "adapter_lineage",
+        "conditioning_lineage"
+      ]
+    },
+    "capacity_matching": {
+      "enabled": true,
+      "measured_counts_required": true,
+      "baseline_ids": [
+        "standard_jepa",
+        "unconstrained_multihead"
+      ]
+    },
+    "claim_coverage": {
+      "enabled": true
+    }
+  },
+  "experiments": [
+    {
+      "id": "rollout-comparison",
+      "system_id": "synthetic-system-v1",
+      "usage_mode": "repeated_transition",
+      "split": "test",
+      "horizons": [
+        1,
+        4
+      ],
+      "metrics": [
+        {
+          "id": "normalized_rollout_mse",
+          "direction": "lower_is_better"
+        },
+        {
+          "id": "coordinate_std",
+          "direction": "higher_is_better"
+        }
+      ],
+      "baselines": [
+        "standard_jepa",
+        "unconstrained_multihead"
+      ],
+      "audits": [
+        "geometry",
+        "factor_activity",
+        "online_encoder_activity",
+        "target_leakage",
+        "capacity_matching"
+      ],
+      "tests_claims": [
+        "planned-rollout-comparison"
+      ]
+    }
+  ],
+  "claims": [
+    {
+      "id": "planned-rollout-comparison",
+      "status": "planned",
+      "model_id": "opf",
+      "metric_id": "normalized_rollout_mse",
+      "direction": "lower_is_better",
+      "split": "test",
+      "horizons": [
+        1,
+        4
+      ],
+      "baseline_ids": [
+        "standard_jepa",
+        "unconstrained_multihead"
+      ],
+      "audit_ids": [
+        "geometry",
+        "factor_activity",
+        "online_encoder_activity",
+        "target_leakage",
+        "capacity_matching"
+      ],
+      "experiment_ids": [
+        "rollout-comparison"
+      ],
+      "usage_mode": "repeated_transition"
+    }
+  ],
+  "outputs": {
+    "config_formats": [
+      "json",
+      "yaml"
+    ],
+    "scaffold": {
+      "language": "python",
+      "include_training_loop": false
+    }
+  }
+}

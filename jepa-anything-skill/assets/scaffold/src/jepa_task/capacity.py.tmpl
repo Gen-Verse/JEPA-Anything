@@ -1,0 +1,77 @@
+"""Measured capacity-audit stub for the reference and required baselines."""
+
+from __future__ import annotations
+
+from typing import Any, Mapping
+
+from .contracts import BASELINES, MODEL_ID, REFERENCE_CAPACITY
+
+REQUIRED_BASELINE_KINDS = {"standard_jepa", "unconstrained_multihead"}
+
+
+def _is_positive_int(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and value > 0
+
+
+def _relative_gap(actual: int, reference: int) -> float:
+    return abs(actual - reference) / reference
+
+
+def audit_capacity_measurements(
+    measurements: Mapping[str, Mapping[str, Any]],
+) -> None:
+    """Check measured full-model parameters, predictor FLOPs, and steps.
+
+    ``measurements`` must be produced by the implementation's parameter/FLOPs
+    counters; copying design estimates is not empirical capacity evidence.
+    """
+
+    required_ids = {MODEL_ID, *(baseline["id"] for baseline in BASELINES)}
+    missing = required_ids - set(measurements)
+    if missing:
+        raise ValueError(f"Missing measured capacity records: {sorted(missing)}.")
+
+    reference = measurements[MODEL_ID]
+    for field in ("full_model_trainable_parameters", "predictor_flops", "training_steps"):
+        if not _is_positive_int(reference.get(field)):
+            raise ValueError(f"Reference measurement {field!r} must be a positive integer.")
+    if reference.get("parameter_scope") != REFERENCE_CAPACITY["parameter_scope"]:
+        raise ValueError("Reference parameter-counting scope is wrong.")
+    if reference.get("flops_scope") != REFERENCE_CAPACITY["flops_scope"]:
+        raise ValueError("Reference FLOPs-counting scope is wrong.")
+    if _relative_gap(
+        reference["full_model_trainable_parameters"],
+        REFERENCE_CAPACITY["full_model_trainable_parameters"],
+    ) > REFERENCE_CAPACITY["parameter_tolerance"]:
+        raise ValueError("Measured reference parameters exceed the declared tolerance.")
+    if _relative_gap(
+        reference["predictor_flops"],
+        REFERENCE_CAPACITY["predictor_flops"],
+    ) > REFERENCE_CAPACITY["predictor_flops_tolerance"]:
+        raise ValueError("Measured reference predictor FLOPs exceed the declared tolerance.")
+    if reference["training_steps"] != REFERENCE_CAPACITY["training_steps"]:
+        raise ValueError("Measured reference training steps differ from the contract.")
+
+    kinds = {baseline["kind"] for baseline in BASELINES}
+    if not REQUIRED_BASELINE_KINDS <= kinds:
+        raise ValueError("Both required baseline families must be measured.")
+    for baseline in BASELINES:
+        measured = measurements[baseline["id"]]
+        contract = baseline["capacity_match"]
+        parameters = measured.get("full_model_trainable_parameters")
+        predictor_flops = measured.get("predictor_flops")
+        steps = measured.get("training_steps")
+        if not _is_positive_int(parameters):
+            raise ValueError("A baseline has no valid measured full-model parameter count.")
+        if not _is_positive_int(predictor_flops):
+            raise ValueError("A baseline has no valid measured predictor FLOPs count.")
+        if _relative_gap(parameters, reference["full_model_trainable_parameters"]) > contract["parameter_tolerance"]:
+            raise ValueError("A baseline exceeds the full-model parameter tolerance.")
+        if _relative_gap(predictor_flops, reference["predictor_flops"]) > contract["predictor_flops_tolerance"]:
+            raise ValueError("A baseline exceeds the predictor-FLOPs tolerance.")
+        if steps != reference["training_steps"] or steps != contract["training_steps"]:
+            raise ValueError("Baseline and reference training steps must match exactly.")
+        if measured.get("parameter_scope") != contract["parameter_scope"]:
+            raise ValueError("A baseline parameter-counting scope is wrong.")
+        if measured.get("flops_scope") != contract["flops_scope"]:
+            raise ValueError("A baseline FLOPs-counting scope is wrong.")

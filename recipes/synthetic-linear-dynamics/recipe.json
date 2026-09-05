@@ -1,0 +1,397 @@
+{
+  "schema_version": "jepa-anything.recipe/v1",
+  "recipe_id": "synthetic-linear-dynamics-v1",
+  "title": "Seeded action-conditioned linear dynamics audit fixture",
+  "provenance": {
+    "source_type": "synthetic_generator",
+    "source_name": "local linear state-space generator",
+    "source_version": "1",
+    "license": "CC0-1.0",
+    "created_utc": "2026-08-24T00:00:00Z",
+    "generator_file": "recipes/synthetic-linear-dynamics/run_recipe.py",
+    "generator_algorithm": "python-stdlib-random-v1",
+    "seed": 1729,
+    "raw_external_data": false
+  },
+  "system": {
+    "system_id": "synthetic-coupled-linear-system-v1",
+    "sample_identity_keys": [
+      "system_id",
+      "trajectory_id"
+    ],
+    "state_dim": 4,
+    "control_dim": 1,
+    "observation_dim": 6,
+    "transition": {
+      "type": "discrete_linear_controlled",
+      "state_matrix": [
+        [0.96, 0.12, 0.02, 0.0],
+        [-0.1, 0.94, 0.0, 0.01],
+        [0.01, 0.0, 0.91, 0.17],
+        [0.0, 0.02, -0.14, 0.9]
+      ],
+      "control_matrix": [
+        [0.04],
+        [0.01],
+        [0.03],
+        [-0.02]
+      ],
+      "process_noise_std": 0.01
+    },
+    "observation": {
+      "type": "linear_projection_with_noise",
+      "matrix": [
+        [1.0, 0.0, 0.0, 0.0],
+        [0.0, 1.0, 0.0, 0.0],
+        [0.0, 0.0, 1.0, 0.0],
+        [0.0, 0.0, 0.0, 1.0],
+        [0.7, -0.2, 0.3, 0.0],
+        [0.0, 0.4, -0.1, 0.8]
+      ],
+      "noise_std": 0.02
+    },
+    "control": {
+      "type": "known_exogenous_input",
+      "formula": "0.7*sin(0.11*t + phase) + 0.2*cos(0.037*t)",
+      "phase_by_trajectory": true
+    }
+  },
+  "data": {
+    "trajectory_count": 24,
+    "steps_per_trajectory": 96,
+    "split": {
+      "unit": "trajectory_id",
+      "train_ids": [0, 15],
+      "validation_ids": [16, 19],
+      "test_ids": [20, 23]
+    },
+    "normalization": {
+      "fit_on": "train_only",
+      "applies_to": "observation",
+      "target_statistics_visible_to_context": false
+    }
+  },
+  "task": {
+    "task_id": "predict-four-future-observation-tokens",
+    "system_id": "synthetic-coupled-linear-system-v1",
+    "adapter": {
+      "context_input_fields": [
+        "sensor_0",
+        "sensor_1",
+        "sensor_2",
+        "sensor_3",
+        "sensor_4",
+        "sensor_5"
+      ],
+      "target_input_fields": [
+        "sensor_0",
+        "sensor_1",
+        "sensor_2",
+        "sensor_3",
+        "sensor_4",
+        "sensor_5"
+      ]
+    },
+    "context": {
+      "system_id": "synthetic-coupled-linear-system-v1",
+      "identity_keys": [
+        "system_id",
+        "trajectory_id"
+      ],
+      "observation_offsets": [-7, -6, -5, -4, -3, -2, -1, 0],
+      "available_control_offsets": [-7, -6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7],
+      "sources": [
+        {
+          "id": "observation_stream",
+          "source_type": "observed_sequence",
+          "fields": [
+            "sensor_0",
+            "sensor_1",
+            "sensor_2",
+            "sensor_3",
+            "sensor_4",
+            "sensor_5"
+          ],
+          "available_through": 0
+        },
+        {
+          "id": "control-plan",
+          "source_type": "external_plan",
+          "fields": ["planned_control"],
+          "available_through": 0
+        }
+      ]
+    },
+    "target": {
+      "system_id": "synthetic-coupled-linear-system-v1",
+      "identity_keys": [
+        "system_id",
+        "trajectory_id"
+      ],
+      "observation_offsets": [1, 2, 3, 4],
+      "fields": [
+        "sensor_0",
+        "sensor_1",
+        "sensor_2",
+        "sensor_3",
+        "sensor_4",
+        "sensor_5"
+      ],
+      "source_ids": ["observation_stream"],
+      "mask_context_overlap": true
+    },
+    "target_descriptor": {
+      "fields": [
+        {
+          "name": "horizon",
+          "source": "relative_offset",
+          "values": [1, 2, 3, 4],
+          "availability": "known_at_prediction_time",
+          "role": "index_only",
+          "lineage": {
+            "source_id": "prediction-request",
+            "source_type": "prediction_request",
+            "available_through": 0
+          }
+        }
+      ],
+      "reads_target_observation_values": false,
+      "reads_latent_state": false
+    },
+    "exogenous_inputs": {
+      "fields": [
+        {
+          "name": "planned_control",
+          "availability": "known_at_prediction_time",
+          "lineage": {
+            "source_id": "control-plan",
+            "source_type": "external_plan",
+            "available_through": 0
+          }
+        }
+      ]
+    },
+    "leakage_policy": {
+      "strict_future_target": true,
+      "disjoint_context_target_observations": true,
+      "normalization_fit_on_train_only": true,
+      "split_by_trajectory": true
+    }
+  },
+  "representation": {
+    "family": "opf",
+    "d": 4,
+    "K": 2,
+    "r": 2,
+    "coordinate_layout": "concatenate",
+    "analysis": {
+      "kind": "learned_projectors",
+      "projector_count": 2,
+      "projector_shape": [4, 2],
+      "target_stop_gradient": true
+    },
+    "synthesis": {
+      "kind": "moore_penrose_pseudoinverse",
+      "analysis_map": "projector_transpose",
+      "require_full_rank": true
+    },
+    "factors": [
+      {
+        "id": "pc_000",
+        "width": 2,
+        "semantic_label": null,
+        "status": "uninterpreted_predictive_coordinate"
+      },
+      {
+        "id": "pc_001",
+        "width": 2,
+        "semantic_label": null,
+        "status": "uninterpreted_predictive_coordinate"
+      }
+    ],
+    "activity_audit": {
+      "metric": "coordinate_std_floor",
+      "split": "train",
+      "minimum_std": 0.01,
+      "epsilon": 1e-06,
+      "required_coordinate_count": 4
+    },
+    "capacity": {
+      "full_model_trainable_parameters": 12000,
+      "predictor_flops": 48000,
+      "training_steps": 1000,
+      "parameter_tolerance": 0.003,
+      "predictor_flops_tolerance": 0.02,
+      "parameter_scope": "full_trainable_model",
+      "flops_scope": "predictor_forward_per_target"
+    }
+  },
+  "losses": {
+    "factor_prediction": {
+      "enabled": true,
+      "kind": "factor_mse",
+      "weight": 1.0
+    },
+    "projector_orthogonality": {
+      "enabled": true,
+      "kind": "projector_gram",
+      "weight": 0.05,
+      "components": ["within_projector", "cross_projector"],
+      "projectors": ["pc_000", "pc_001"]
+    },
+    "factor_activity": {
+      "enabled": true,
+      "kind": "coordinate_std_floor",
+      "scope": "projected_target_factors",
+      "weight": 0.1,
+      "min_std": 0.01,
+      "epsilon": 1e-06,
+      "coordinates": [
+        {"factor_id": "pc_000", "coordinate_index": 0},
+        {"factor_id": "pc_000", "coordinate_index": 1},
+        {"factor_id": "pc_001", "coordinate_index": 0},
+        {"factor_id": "pc_001", "coordinate_index": 1}
+      ]
+    },
+    "online_encoder_activity": {
+      "enabled": true,
+      "kind": "coordinate_std_floor",
+      "scope": "online_context_encoder",
+      "weight": 0.1,
+      "min_std": 0.01,
+      "epsilon": 1e-06,
+      "dimensions": [0, 1, 2, 3]
+    }
+  },
+  "usage": {
+    "mode": "repeated_transition",
+    "transition_input": "state_plus_known_control",
+    "rollout_horizons": [1, 2, 4, 8],
+    "terminal_readout": false,
+    "factor_analysis": false
+  },
+  "baselines": [
+    {
+      "id": "standard_jepa_capacity_matched",
+      "family": "standard_jepa",
+      "required": true,
+      "capacity_match": {
+        "full_model_trainable_parameters": 12000,
+        "predictor_flops": 48000,
+        "training_steps": 1000,
+        "parameter_tolerance": 0.003,
+        "predictor_flops_tolerance": 0.02,
+        "parameter_scope": "full_trainable_model",
+        "flops_scope": "predictor_forward_per_target",
+        "reference_model_id": "opf",
+        "encoder_policy": "same_family_and_width",
+        "data_policy": "same_samples_and_augmentations"
+      }
+    },
+    {
+      "id": "unconstrained_multihead_capacity_matched",
+      "family": "unconstrained_multihead",
+      "required": true,
+      "head_count": 2,
+      "head_dim": 2,
+      "capacity_match": {
+        "full_model_trainable_parameters": 12000,
+        "predictor_flops": 48000,
+        "training_steps": 1000,
+        "parameter_tolerance": 0.003,
+        "predictor_flops_tolerance": 0.02,
+        "parameter_scope": "full_trainable_model",
+        "flops_scope": "predictor_forward_per_target",
+        "reference_model_id": "opf",
+        "encoder_policy": "same_family_and_width",
+        "data_policy": "same_samples_and_augmentations"
+      }
+    }
+  ],
+  "experiments": [
+    {
+      "id": "structural_design_audit",
+      "kind": "deterministic_audit",
+      "covers": [
+        "same_underlying_system",
+        "context_input_lineage",
+        "no_target_leakage",
+        "state_composition",
+        "factor_activity",
+        "loss_contract",
+        "capacity_matched_baselines",
+        "usage_mode_coverage",
+        "claim_coverage"
+      ]
+    },
+    {
+      "id": "planned_multistep_rollout_comparison",
+      "kind": "protocol_only",
+      "split": "test",
+      "horizons": [1, 2, 4, 8],
+      "metrics": [
+        {
+          "id": "normalized_mse_by_horizon",
+          "direction": "lower_is_better"
+        },
+        {
+          "id": "state_variance_retention_by_horizon",
+          "direction": "higher_is_better"
+        }
+      ],
+      "baselines": [
+        "standard_jepa_capacity_matched",
+        "unconstrained_multihead_capacity_matched"
+      ],
+      "audits": [
+        "geometry",
+        "factor_activity",
+        "online_encoder_activity",
+        "target_leakage",
+        "capacity_matching"
+      ],
+      "tests_claims": ["planned_rollout_comparison"],
+      "executed_by_smoke_recipe": false
+    }
+  ],
+  "claims": {
+    "items": [
+      {
+        "id": "planned_rollout_comparison",
+        "status": "planned",
+        "model_id": "opf",
+        "metric_id": "normalized_mse_by_horizon",
+        "direction": "lower_is_better",
+        "split": "test",
+        "horizons": [1, 2, 4, 8],
+        "baseline_ids": [
+          "standard_jepa_capacity_matched",
+          "unconstrained_multihead_capacity_matched"
+        ],
+        "audit_ids": [
+          "geometry",
+          "factor_activity",
+          "online_encoder_activity",
+          "target_leakage",
+          "capacity_matching"
+        ],
+        "experiment_ids": ["planned_multistep_rollout_comparison"],
+        "usage_mode": "repeated_transition"
+      }
+    ],
+    "scientific_results_claimed": false,
+    "allowed_statement": "The fixture passes or fails deterministic task-interface audits under the recorded generator.",
+    "prohibited_inferences": [
+      "learned coordinates have physical semantics",
+      "OPF outperforms a capacity-matched baseline",
+      "the learned state is causally identifiable",
+      "the smoke audit is evidence of real-world generalization"
+    ]
+  },
+  "outputs": {
+    "compiled_design": "recipes/synthetic-linear-dynamics/design.expected.json",
+    "default_audit_report": "work/synthetic-linear-dynamics-report.json",
+    "checkpoint_manifest": "checkpoints/manifest.json",
+    "persist_generated_dataset": false
+  }
+}

@@ -1,0 +1,6 @@
+interface:
+  display_name: "JEPA Anything World-Model Compiler"
+  short_description: "Convert world models into validated JEPA designs"
+  default_prompt: "Use $jepa-anything-skill to convert my world-model task into a validated JEPA Anything design and code skeleton."
+policy:
+  allow_implicit_invocation: true

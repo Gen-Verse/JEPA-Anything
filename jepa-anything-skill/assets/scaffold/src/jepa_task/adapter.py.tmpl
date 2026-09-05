@@ -1,0 +1,126 @@
+"""Observation-adapter boundary generated from a validated design.
+
+Implement only data conversion here. The exported constants are the complete
+field and lineage allowlists; target-time values must never enter context.
+"""
+
+from __future__ import annotations
+
+from typing import Any, Mapping, Sequence
+
+from .contracts import (
+    CONTEXT_INPUT_FIELDS,
+    CONTEXT_SOURCES,
+    EXOGENOUS_INPUTS,
+    IDENTITY_KEYS,
+    SYSTEM_ID,
+    TARGET_DESCRIPTORS,
+    TARGET_INPUT_FIELDS,
+)
+
+CONTEXT_END = {{CONTEXT_END}}
+TARGET_START = {{TARGET_START}}
+TARGET_END = {{TARGET_END}}
+
+
+def _require_fields(record: Mapping[str, Any], fields: Sequence[str], label: str) -> None:
+    missing = set(fields) - set(record)
+    if missing:
+        raise ValueError(f"{label} record is missing declared fields: {sorted(missing)}.")
+    extra = set(record) - set(fields)
+    if extra:
+        raise ValueError(f"{label} record contains undeclared fields: {sorted(extra)}.")
+
+
+def assert_declared_lineage() -> None:
+    """Recheck generated adapter and conditioning-source boundaries."""
+
+    source_by_id = {source["id"]: source for source in CONTEXT_SOURCES}
+    context_fields = {
+        field for source in CONTEXT_SOURCES for field in source["fields"]
+    }
+    if not set(CONTEXT_INPUT_FIELDS) <= context_fields:
+        raise ValueError("A context adapter input lacks context-source lineage.")
+    for source in CONTEXT_SOURCES:
+        if source["available_through"] > CONTEXT_END:
+            raise ValueError("A context source extends beyond the context window.")
+    for field in (*TARGET_DESCRIPTORS, *EXOGENOUS_INPUTS):
+        lineage = field["lineage"]
+        if lineage["available_through"] > CONTEXT_END:
+            raise ValueError("A conditioning input is unavailable at prediction time.")
+        if lineage["source_type"] == "context_source":
+            source = source_by_id.get(lineage["source_id"])
+            if source is None or field["name"] not in source["fields"]:
+                raise ValueError("A conditioning input has invalid context-source lineage.")
+
+
+class ObservationAdapter:
+    """Convert raw records to tokens while enforcing generated allowlists."""
+
+    def adapt_context(self, records: Sequence[Mapping[str, Any]]) -> Any:
+        """Return context tokens using only ``CONTEXT_INPUT_FIELDS``."""
+
+        for record in records:
+            _require_fields(record, CONTEXT_INPUT_FIELDS, "Context")
+        raise NotImplementedError("Map declared context fields to context tokens.")
+
+    def adapt_target(self, records: Sequence[Mapping[str, Any]]) -> Any:
+        """Return target tokens using exactly ``TARGET_INPUT_FIELDS``."""
+
+        for record in records:
+            _require_fields(record, TARGET_INPUT_FIELDS, "Target")
+        raise NotImplementedError("Map declared target fields to target tokens.")
+
+    def adapt_target_descriptor(self, descriptor: Mapping[str, Any]) -> Any:
+        """Adapt only descriptors with declared prediction-time lineage."""
+
+        _require_fields(
+            descriptor,
+            tuple(field["name"] for field in TARGET_DESCRIPTORS),
+            "Target descriptor",
+        )
+        raise NotImplementedError("Map declared target descriptors to conditioning tokens.")
+
+    def adapt_exogenous_inputs(self, inputs: Mapping[str, Any]) -> Any:
+        """Adapt only exogenous inputs with declared prediction-time lineage."""
+
+        _require_fields(
+            inputs,
+            tuple(field["name"] for field in EXOGENOUS_INPUTS),
+            "Exogenous-input",
+        )
+        raise NotImplementedError("Map declared exogenous inputs to conditioning tokens.")
+
+    @staticmethod
+    def assert_record_boundary(
+        *,
+        system_id: str,
+        source_id: str,
+        max_context_offset: int,
+    ) -> None:
+        if system_id != SYSTEM_ID:
+            raise ValueError("Record belongs to a different underlying system.")
+        sources = {source["id"]: source for source in CONTEXT_SOURCES}
+        if source_id not in sources:
+            raise ValueError("Record lacks declared context-source lineage.")
+        if max_context_offset > sources[source_id]["available_through"]:
+            raise ValueError("Record exceeds its declared source cutoff.")
+        if max_context_offset > CONTEXT_END:
+            raise ValueError("Context includes a value unavailable at prediction time.")
+        if CONTEXT_END >= TARGET_START or TARGET_START > TARGET_END:
+            raise ValueError("Configured context-target windows overlap or are reversed.")
+
+    @staticmethod
+    def assert_shared_identity(
+        context_identity: Mapping[str, Any],
+        target_identity: Mapping[str, Any],
+    ) -> None:
+        """Require context and target to name the same concrete system instance."""
+
+        for key in IDENTITY_KEYS:
+            if key not in context_identity:
+                raise ValueError(f"Context identity is missing required key {key!r}.")
+            if key not in target_identity:
+                raise ValueError(f"Target identity is missing required key {key!r}.")
+            if context_identity[key] != target_identity[key]:
+                raise ValueError(f"Context and target identity differ for key {key!r}.")

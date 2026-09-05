@@ -1,0 +1,186 @@
+import sys
+import unittest
+from pathlib import Path
+
+# Keep generated contract checks runnable before package installation.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+
+from jepa_task.adapter import ObservationAdapter, assert_declared_lineage
+from jepa_task.activity import audit_activity_measurements
+from jepa_task.capacity import audit_capacity_measurements
+from jepa_task.contracts import (
+    BASELINE_KINDS,
+    BASELINES,
+    AUDITS,
+    CONTEXT_INPUT_FIELDS,
+    EXOGENOUS_INPUTS,
+    IDENTITY_KEYS,
+    MODEL_ID,
+    REFERENCE_CAPACITY,
+    STATE_D,
+    STATE_ANALYSIS,
+    STATE_K,
+    STATE_R,
+    TARGET_DESCRIPTORS,
+    USAGE_MODE,
+    assert_contract,
+)
+from jepa_task.evaluation import (
+    CLAIMS,
+    EXPERIMENTS,
+    assert_planned_claim_coverage,
+    audit_claim_evidence_envelope,
+)
+from jepa_task.model import ORTHOGONALITY_MODE, audit_geometry_measurements, qr_retraction_due
+from jepa_task.usage import USAGE_DETAILS, consume_state
+
+
+class GeneratedContractTests(unittest.TestCase):
+    def test_static_contract(self) -> None:
+        assert_contract()
+
+    def test_required_baselines_are_present(self) -> None:
+        self.assertIn("standard_jepa", BASELINE_KINDS)
+        self.assertIn("unconstrained_multihead", BASELINE_KINDS)
+
+    def test_claims_have_exact_planned_coverage(self) -> None:
+        assert_planned_claim_coverage()
+        claim = CLAIMS[0]
+        experiment = EXPERIMENTS[0]
+        audit_claim_evidence_envelope(
+            claim["id"],
+            experiment["id"],
+            {
+                "experiment_id": experiment["id"],
+                "model_id": claim["model_id"],
+                "metric_id": claim["metric_id"],
+                "direction": claim["direction"],
+                "split": claim["split"],
+                "horizons": claim["horizons"],
+                "usage_mode": claim["usage_mode"],
+                "baseline_ids": claim["baseline_ids"],
+                "passed_audit_ids": claim["audit_ids"],
+            },
+        )
+
+    def test_conditioning_inputs_have_explicit_lineage(self) -> None:
+        assert_declared_lineage()
+        self.assertTrue(hasattr(ObservationAdapter, "adapt_target_descriptor"))
+        self.assertTrue(hasattr(ObservationAdapter, "adapt_exogenous_inputs"))
+        for field in (*TARGET_DESCRIPTORS, *EXOGENOUS_INPUTS):
+            self.assertIn("lineage", field)
+            self.assertIn(
+                field["availability"],
+                {"observed_by_context_end", "known_at_prediction_time"},
+            )
+        context_record = {field: 0 for field in CONTEXT_INPUT_FIELDS}
+        context_record["undeclared_future_value"] = 1
+        with self.assertRaises(ValueError):
+            ObservationAdapter().adapt_context([context_record])
+
+    def test_context_and_target_share_one_instance(self) -> None:
+        identity = {key: f"value-{index}" for index, key in enumerate(IDENTITY_KEYS)}
+        ObservationAdapter.assert_shared_identity(identity, dict(identity))
+        missing = dict(identity)
+        missing.pop(IDENTITY_KEYS[0])
+        with self.assertRaises(ValueError):
+            ObservationAdapter.assert_shared_identity(identity, missing)
+
+    def test_pseudoinverse_synthesis_requires_measured_full_rank(self) -> None:
+        valid = {
+            "projector_shapes": [[STATE_D, STATE_R] for _ in range(STATE_K)],
+            "analysis_map_shape": [STATE_D, STATE_D],
+            "analysis_rank": STATE_D,
+            "condition_number": 1.0,
+            "synthesis_nmse": 0.0,
+        }
+        audit_geometry_measurements(valid)
+        invalid = dict(valid, analysis_rank=STATE_D - 1)
+        with self.assertRaises(ValueError):
+            audit_geometry_measurements(invalid)
+        for field, value in (("condition_number", float("nan")), ("synthesis_nmse", float("inf"))):
+            with self.subTest(field=field):
+                with self.assertRaises(ValueError):
+                    audit_geometry_measurements(dict(valid, **{field: value}))
+
+    def test_orthogonality_strategy_hook(self) -> None:
+        self.assertIn(ORTHOGONALITY_MODE, {"soft_gram", "qr_init", "qr_retraction"})
+        if ORTHOGONALITY_MODE == "qr_retraction":
+            frequency = STATE_ANALYSIS["qr_retraction"]["frequency"]
+            self.assertTrue(qr_retraction_due(frequency))
+            if frequency > 1:
+                self.assertFalse(qr_retraction_due(frequency - 1))
+        else:
+            self.assertFalse(qr_retraction_due(1))
+
+    def test_measured_capacity_contract(self) -> None:
+        reference = {
+            "full_model_trainable_parameters": REFERENCE_CAPACITY["full_model_trainable_parameters"],
+            "predictor_flops": REFERENCE_CAPACITY["predictor_flops"],
+            "training_steps": REFERENCE_CAPACITY["training_steps"],
+            "parameter_scope": REFERENCE_CAPACITY["parameter_scope"],
+            "flops_scope": REFERENCE_CAPACITY["flops_scope"],
+        }
+        measurements = {MODEL_ID: reference}
+        for baseline in BASELINES:
+            measurements[baseline["id"]] = dict(reference)
+        audit_capacity_measurements(measurements)
+        measurements[BASELINES[0]["id"]] = dict(reference, predictor_flops=1)
+        with self.assertRaises(ValueError):
+            audit_capacity_measurements(measurements)
+
+    def test_measured_activity_contract(self) -> None:
+        factor_minimum = AUDITS["factor_activity"]["minimum"]
+        encoder_minimum = AUDITS["online_encoder_activity"]["minimum"]
+        valid = {
+            "factor_coordinate_std": [
+                [factor_minimum for _ in range(STATE_R)] for _ in range(STATE_K)
+            ],
+            "online_encoder_coordinate_std": [
+                encoder_minimum for _ in range(STATE_D)
+            ],
+        }
+        audit_activity_measurements(valid)
+        collapsed = {
+            **valid,
+            "factor_coordinate_std": [row[:] for row in valid["factor_coordinate_std"]],
+        }
+        collapsed["factor_coordinate_std"][0][0] = 0.0
+        with self.assertRaises(ValueError):
+            audit_activity_measurements(collapsed)
+
+    def test_selected_use_mode_consumer(self) -> None:
+        if USAGE_MODE == "terminal_readout":
+            result = consume_state(
+                7,
+                extras={
+                    "readout": lambda value, *, tasks, metrics: (value, tasks, metrics),
+                },
+            )
+            self.assertEqual(result, (7, tuple(USAGE_DETAILS["tasks"]), tuple(USAGE_DETAILS["metrics"])))
+            return
+        if USAGE_MODE == "factor_analysis":
+            result = consume_state(
+                7,
+                extras={
+                    "analysis": lambda value, **kwargs: (value, kwargs),
+                },
+            )
+            self.assertEqual(result[0], 7)
+            self.assertEqual(result[1]["coordinate_reporting"], "prediction_coordinates_only")
+            return
+
+        horizons = tuple(USAGE_DETAILS["rollout_horizons"])
+        extras = {
+            "transition": lambda value, *, step, exogenous: value + 1,
+        }
+        if USAGE_DETAILS["condition_on_exogenous"]:
+            extras["exogenous_by_step"] = {
+                step: 0 for step in range(1, max(horizons) + 1)
+            }
+        result = consume_state(0, extras=extras)
+        self.assertEqual(result, {horizon: horizon for horizon in horizons})
+
+
+if __name__ == "__main__":
+    unittest.main()

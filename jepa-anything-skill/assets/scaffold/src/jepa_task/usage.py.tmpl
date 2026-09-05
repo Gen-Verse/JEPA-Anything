@@ -1,0 +1,57 @@
+"""Executable downstream-use dispatcher; contains no optimization or trainer."""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+from typing import Any, Mapping
+
+from .contracts import USAGE_MODE
+
+USAGE_DETAILS = {{USAGE_DETAILS_REPR}}
+
+
+def _require_callable(extras: Mapping[str, Any], name: str) -> Callable[..., Any]:
+    consumer = extras.get(name)
+    if not callable(consumer):
+        raise ValueError(f"Use mode {USAGE_MODE!r} requires callable extras[{name!r}].")
+    return consumer
+
+
+def consume_state(state: Any, *, extras: Mapping[str, Any] | None = None) -> Any:
+    """Dispatch a state through exactly the configured downstream-use mode."""
+
+    supplied = dict(extras or {})
+    if USAGE_MODE == "terminal_readout":
+        readout = _require_callable(supplied, "readout")
+        return readout(
+            state,
+            tasks=tuple(USAGE_DETAILS["tasks"]),
+            metrics=tuple(USAGE_DETAILS["metrics"]),
+        )
+
+    if USAGE_MODE == "factor_analysis":
+        analysis = _require_callable(supplied, "analysis")
+        return analysis(
+            state,
+            probes=tuple(USAGE_DETAILS["probes"]),
+            interventions=tuple(USAGE_DETAILS["interventions"]),
+            coordinate_reporting=USAGE_DETAILS["coordinate_reporting"],
+        )
+
+    if USAGE_MODE != "repeated_transition":
+        raise ValueError(f"Unsupported configured use mode: {USAGE_MODE!r}.")
+    transition = _require_callable(supplied, "transition")
+    horizons = tuple(USAGE_DETAILS["rollout_horizons"])
+    exogenous_by_step = supplied.get("exogenous_by_step", {})
+    if USAGE_DETAILS["condition_on_exogenous"] and not isinstance(exogenous_by_step, Mapping):
+        raise ValueError("Repeated transition requires an exogenous_by_step mapping.")
+    current = state
+    selected: dict[int, Any] = {}
+    for step in range(1, max(horizons) + 1):
+        if USAGE_DETAILS["condition_on_exogenous"] and step not in exogenous_by_step:
+            raise ValueError(f"Missing declared exogenous input for transition step {step}.")
+        exogenous = exogenous_by_step.get(step) if isinstance(exogenous_by_step, Mapping) else None
+        current = transition(current, step=step, exogenous=exogenous)
+        if step in horizons:
+            selected[step] = current
+    return selected

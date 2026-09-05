@@ -1,0 +1,19 @@
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = [
+  "jepa-anything-core/tests",
+  "jepa-anything-skill/tests",
+]
+pythonpath = [
+  "jepa-anything-core/src",
+  "jepa-anything-skill",
+]
+addopts = "-ra --strict-markers"
+
+[tool.coverage.run]
+branch = true
+source = ["jepa_anything_core"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true

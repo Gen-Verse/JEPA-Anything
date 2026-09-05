@@ -1,0 +1,28 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+build/
+dist/
+.venv/
+venv/
+
+# Generated task projects and local runs
+generated/
+runs/
+wandb/
+tensorboard/
+
+# Model artefacts stay outside Git; commit only checkpoint manifests.
+*.ckpt
+*.pt
+*.pth
+*.safetensors
+*.bin
+*.onnx
+
+.DS_Store

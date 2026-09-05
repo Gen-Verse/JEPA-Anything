@@ -1,0 +1,69 @@
+"""Measured per-coordinate activity audit for generated task implementations."""
+
+from __future__ import annotations
+
+import math
+from collections.abc import Mapping, Sequence
+from typing import Any
+
+from .contracts import AUDITS, STATE_D, STATE_K, STATE_R
+
+
+def _coordinate_values(value: Any, length: int, label: str) -> tuple[float, ...]:
+    if not isinstance(value, Sequence) or isinstance(value, (str, bytes)):
+        raise ValueError(f"{label} must be a numeric sequence.")
+    if len(value) != length:
+        raise ValueError(f"{label} must contain exactly {length} coordinates.")
+    normalized: list[float] = []
+    for item in value:
+        if (
+            not isinstance(item, (int, float))
+            or isinstance(item, bool)
+            or not math.isfinite(item)
+            or item < 0
+        ):
+            raise ValueError(f"{label} values must be finite and non-negative.")
+        normalized.append(float(item))
+    return tuple(normalized)
+
+
+def audit_activity_measurements(measurements: Mapping[str, Any]) -> None:
+    """Require measured standard deviations for every factor and encoder coordinate.
+
+    Expected keys are ``factor_coordinate_std`` with shape ``[K][r]`` and
+    ``online_encoder_coordinate_std`` with shape ``[d]``. Passing only verifies
+    the declared activity floors; it does not assign semantics to coordinates.
+    """
+
+    expected_keys = {"factor_coordinate_std", "online_encoder_coordinate_std"}
+    if set(measurements) != expected_keys:
+        raise ValueError("Activity measurements must contain exactly the two declared arrays.")
+    factor_rows = measurements["factor_coordinate_std"]
+    if not isinstance(factor_rows, Sequence) or isinstance(factor_rows, (str, bytes)):
+        raise ValueError("factor_coordinate_std must have shape [K][r].")
+    if len(factor_rows) != STATE_K:
+        raise ValueError(f"factor_coordinate_std must contain exactly K={STATE_K} rows.")
+    factors = tuple(
+        _coordinate_values(row, STATE_R, f"factor_coordinate_std[{index}]")
+        for index, row in enumerate(factor_rows)
+    )
+    encoder = _coordinate_values(
+        measurements["online_encoder_coordinate_std"],
+        STATE_D,
+        "online_encoder_coordinate_std",
+    )
+    factor_minimum = AUDITS["factor_activity"]["minimum"]
+    encoder_minimum = AUDITS["online_encoder_activity"]["minimum"]
+    inactive_factors = [
+        (factor_index, coordinate_index)
+        for factor_index, row in enumerate(factors)
+        for coordinate_index, value in enumerate(row)
+        if value < factor_minimum
+    ]
+    inactive_encoder = [
+        index for index, value in enumerate(encoder) if value < encoder_minimum
+    ]
+    if inactive_factors:
+        raise ValueError(f"Inactive projected factor coordinates: {inactive_factors}.")
+    if inactive_encoder:
+        raise ValueError(f"Inactive online-encoder coordinates: {inactive_encoder}.")
