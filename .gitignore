@@ -26,3 +26,6 @@ tensorboard/
 *.onnx
 
 .DS_Store
+
+# macOS AppleDouble metadata
+._*
