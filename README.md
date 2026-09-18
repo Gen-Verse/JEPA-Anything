@@ -1,6 +1,6 @@
-[简体中文](README.zh-CN.md) · [Quick start](#quick-start) · [Core library](jepa-anything-core/README.md) · [Example recipe](recipes/synthetic-linear-dynamics/README.md)
+[简体中文](README.zh-CN.md) · [Paper](https://arxiv.org/abs/2609.20800) · [Core library](jepa-anything-core/README.md) · [Citation](#citation) 
 
-[Paper](https://arxiv.org/abs/2609.20800) · [PDF](https://arxiv.org/pdf/2609.20800) · [Citation](#citation)
+
 
 <p align="center">
   <img src="assets/figures/framework-overview.png" alt="JEPA-Anything overview: cross-domain predictive learning and Orthogonal Predictive Factorization" width="100%" />
