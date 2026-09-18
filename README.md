@@ -1,5 +1,7 @@
 [简体中文](README.zh-CN.md) · [Quick start](#quick-start) · [Core library](jepa-anything-core/README.md) · [Example recipe](recipes/synthetic-linear-dynamics/README.md)
 
+[Paper](https://arxiv.org/abs/2609.20800) · [PDF](https://arxiv.org/pdf/2609.20800) · [Citation](#citation)
+
 <p align="center">
   <img src="assets/figures/framework-overview.png" alt="JEPA-Anything overview: cross-domain predictive learning and Orthogonal Predictive Factorization" width="100%" />
 </p>
@@ -114,6 +116,19 @@ make check
 ```
 
 This runs source checks, core and task-design tests, reference-design validation, the structural recipe, and manifest verification. Use `make help` to see individual targets.
+
+## Citation
+
+If you find this work useful in your research, please cite our paper:
+
+```bibtex
+@article{cui2026jepaanything,
+  title={JEPA-Anything: Learning Predictive Models across Different Worlds},
+  author={Cui, Taoyong and Wang, Zhongyao and Xu, Xinyue and Liu, Weiyang and Yu, Zhaochen and Zhang, Yuying and Gao, Qiang and Yang, Mengyue and Ouyang, Wanli and Heng, Pheng Ann and Wu, Yingcheng and Yin, Zhenfei and Yang, Ling},
+  journal={arXiv preprint arXiv:2609.20800},
+  year={2026}
+}
+```
 
 ## License
 
