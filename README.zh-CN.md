@@ -1,5 +1,7 @@
 [English](README.md) · [快速开始](#快速开始) · [核心库](jepa-anything-core/README.md) · [示例任务](recipes/synthetic-linear-dynamics/README.md)
 
+[论文](https://arxiv.org/abs/2609.20800) · [PDF](https://arxiv.org/pdf/2609.20800) · [引用](#引用)
+
 <p align="center">
   <img src="assets/figures/framework-overview.png" alt="JEPA-Anything：跨领域预测学习与正交预测因子分解" width="100%" />
 </p>
@@ -111,6 +113,19 @@ make check
 ```
 
 该命令执行 JSON 校验、Python 编译、核心库与任务设计测试、设计校验、结构示例和清单检查。单项命令见 `make help`。
+
+## 引用
+
+如果本项目对你的研究有帮助，请引用我们的论文：
+
+```bibtex
+@article{cui2026jepaanything,
+  title={JEPA-Anything: Learning Predictive Models across Different Worlds},
+  author={Cui, Taoyong and Wang, Zhongyao and Xu, Xinyue and Liu, Weiyang and Yu, Zhaochen and Zhang, Yuying and Gao, Qiang and Yang, Mengyue and Ouyang, Wanli and Heng, Pheng Ann and Wu, Yingcheng and Yin, Zhenfei and Yang, Ling},
+  journal={arXiv preprint arXiv:2609.20800},
+  year={2026}
+}
+```
 
 ## 许可证
 
