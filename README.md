@@ -1,4 +1,4 @@
-[简体中文](README.zh-CN.md) · [Paper](https://arxiv.org/abs/2609.20800) · [Core library](jepa-anything-core/README.md) · [Citation](#citation) 
+[简体中文](README.zh-CN.md) · [Paper](https://arxiv.org/abs/2609.20800) · [Models](https://huggingface.co/collections/Gen-Verse/jepa-anything) · [Core library](jepa-anything-core/README.md) · [Citation](#citation) 
 
 
 
